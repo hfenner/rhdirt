@@ -1,0 +1,206 @@
+---
+- name: Cluster Initial Configuration
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    cert_manager_aws_access_key_id: "{{ lookup('env', 'CERT_MANAGER_AWS_ACCESS_KEY_ID') }}"
+    cert_manager_aws_secret_access_key: "{{ lookup('env', 'CERT_MANAGER_AWS_SECRET_ACCESS_KEY') }}"
+    cert_manager_aws_hosted_zone_id: "{{ lookup('env', 'AWS_HOSTED_ZONE_ID') }}"
+    cert_manager_aws_region: "{{ lookup('env', 'CERT_MANAGER_AWS_REGION') }}"
+    cluster_name: "{{ lookup('env', 'CLUSTER_NAME') }}"
+    github_oauth_id: "{{ lookup('env', 'GITHUB_OAUTH_ID') }}"
+    github_oauth_secret: "{{ lookup('env', 'GITHUB_OAUTH_SECRET') }}"
+    github_group_sync_appid: "{{ lookup('env', 'GITHUB_GROUP_SYNC_APPID') }}"
+    github_group_sync_private_key: "{{ lookup('file', lookup('env', 'HOME') + '/' + cluster_name + '_github_key') }}"
+    base_domain: "{{ lookup('env', 'BASE_DOMAIN') }}"
+    cluster_domain: "{{ cluster_name + '.' + base_domain }}"
+    cluster_domain_dash: "{{ cluster_domain | replace('.', '-') }}"
+
+  tasks:
+  - name: Create namespaces, operators, and secrets
+    kubernetes.core.k8s:
+      state: present
+      template: 
+      - path: namespaces/namespaces.yaml
+      - path: operators/operators.yaml
+      - path: secrets/secrets.yaml
+
+  - name: Create Cluster Issuers
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: cert-manager.io/v1
+        kind: ClusterIssuer
+        metadata:
+          name: "{{ item.name }}"
+        spec:
+          acme:
+            privateKeySecretRef:
+              name: acme-account-private-key
+            server: "{{ item.url }}" 
+            solvers:
+            - dns01:
+                route53:
+                  accessKeyID: "{{ cert_manager_aws_access_key_id }}"
+                  hostedZoneID: "{{ cert_manager_aws_hosted_zone_id }}"
+                  region: "{{ cert_manager_aws_region }}"
+                  secretAccessKeySecretRef:
+                    key: awsSecretAccessKey
+                    name: aws-secret
+    loop:
+    - name: staging-letsencrypt-cluster-issuer 
+      url: https://acme-staging-v02.api.letsencrypt.org/directory
+    - name: prod-letsencrypt-cluster-issuer
+      url: https://acme-v02.api.letsencrypt.org/directory
+
+  - name: Apply the patch to the CertManager resource
+    kubernetes.core.k8s:
+      state: patched
+      definition:
+        apiVersion: operator.openshift.io/v1alpha1
+        kind: CertManager
+        metadata:
+          name: cluster
+        spec: 
+          controllerConfig:
+            overrideArgs:
+              - "--dns01-recursive-nameservers=8.8.8.8:53,1.1.1.1:53"
+              - "--dns01-recursive-nameservers-only"
+
+  - name: Patch the cluster proxy to use the custom CA
+    kubernetes.core.k8s:
+      state: patched
+      definition:
+        apiVersion: config.openshift.io/v1
+        kind: Proxy
+        metadata:
+          name: cluster
+        spec:
+          trustedCA:
+            name: custom-ca
+
+  - name: Create Console Cert
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: cert-manager.io/v1
+        kind: Certificate
+        metadata:
+          name: "{{ cluster_domain_dash }}-certificate"
+          namespace: "{{ item }}"
+        spec:
+          commonName: "{{ cluster_domain }}"
+          dnsNames:
+            - "{{ cluster_domain }}"
+            - "apps.{{ cluster_domain }}"
+            - '*.apps.{{ cluster_domain }}'
+            - "downloads.{{ cluster_domain }}"
+            - "console.{{ cluster_domain }}"
+            - "snovirt.{{ base_domain }}"
+          isCA: false
+          issuerRef:
+            group: cert-manager.io
+            kind: ClusterIssuer
+            name: prod-letsencrypt-cluster-issuer
+          secretName: "{{ cluster_domain_dash }}-tls"
+    loop:
+    - openshift-ingress
+    - openshift-config
+
+  - name: Patch the IngressController to use the custom certificate
+    kubernetes.core.k8s:
+      state: patched
+      definition:
+        apiVersion: operator.openshift.io/v1
+        kind: IngressController
+        metadata:
+          name: default
+          namespace: openshift-ingress-operator
+        spec:
+          defaultCertificate:
+            name: "{{ cluster_domain_dash }}-tls"
+
+  - name: Patch the Ingress configuration with custom console hostname
+    kubernetes.core.k8s:
+      state: patched
+      definition:
+        apiVersion: config.openshift.io/v1
+        kind: Ingress
+        metadata:
+          name: cluster
+        spec:
+          componentRoutes:
+          - name: console
+            namespace: openshift-console
+            hostname: snovirt.dragonslair.dev
+            servingCertKeyPairSecret:
+              name: "{{ cluster_domain_dash }}-tls"
+
+  - name: Patch the Auth
+    kubernetes.core.k8s:
+      state: patched
+      definition:
+        apiVersion: config.openshift.io/v1
+        kind: OAuth
+        metadata:
+          name: cluster
+        spec:
+          identityProviders:
+          - name: githubidp
+            mappingMethod: claim
+            type: GitHub
+            github:
+              clientID: Ov23livnNuwJ0MgRcPO4
+              clientSecret:
+                name: github-secret
+              organizations:
+              - infrabuildxyz
+
+  - name: Sync Groups
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: redhatcop.redhat.io/v1alpha1
+        kind: GroupSync
+        metadata:
+          name: github-groupsync
+          namespace: group-sync-operator
+        spec:
+          providers:
+          - name: github
+            github:
+              credentialsSecret:
+                name: github-group-sync
+                namespace: group-sync-operator
+              organization: infrabuildxyz
+              prune: true
+          schedule: "* * * * *"
+
+  - name: Create ClusterRoleBinding for the group
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: cluster-admin-admins
+        subjects:
+          - kind: Group
+            name: admins
+            apiGroup: rbac.authorization.k8s.io
+        roleRef:
+          kind: ClusterRole
+          name: cluster-admin
+          apiGroup: rbac.authorization.k8s.io
+
+  - name: Subscribe to OpenShift Virtualization Operator
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        metadata:
+          name: kubevirt-hyperconverged
+          namespace: openshift-cnv
+        spec:

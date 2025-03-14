@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: group-sync-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-cnv
