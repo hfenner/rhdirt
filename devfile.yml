@@ -14,7 +14,6 @@ components:
         - name: 'ANSIBLE_COLLECTIONS_PATH'
           value: '~/.ansible/collections:/usr/share/ansible/collections:/projects/ansible-devspaces-demo/collections'
 commands:
-
   - id: molecule-create
     exec:
       label: "1.Molecule: start a test pod for the automation"
