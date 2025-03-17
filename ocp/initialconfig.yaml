@@ -16,6 +16,7 @@
     base_domain: "{{ lookup('env', 'BASE_DOMAIN') }}"
     cluster_domain: "{{ cluster_name + '.' + base_domain }}"
     cluster_domain_dash: "{{ cluster_domain | replace('.', '-') }}"
+    vanity_url: "{{ lookup('env', 'VANITY') }}.{{ base_domain }}"
 
   tasks:
   - name: Create namespaces, operators, and secrets
@@ -24,14 +25,44 @@
       template: 
       - path: namespaces/namespaces.yaml
 
-  - name: Create operators and secrets
+  - name: Create operators
     kubernetes.core.k8s:
       state: present
       template: 
       - path: operators/operators.yaml
-      - path: secrets/secrets.yaml
 
-  - name: Create Cluster Issuers
+  - name: Check Operator Status
+    kubernetes.core.k8s_info:
+      api_version: operators.coreos.com/v1alpha1
+      kind: ClusterServiceVersion
+      namespace: group-sync-operator
+    register: csv_status
+      
+  - name: Wait for Operator CSV to be in "Succeeded" state
+    ansible.builtin.pause:
+      seconds: 10  # Initial wait time before checking
+
+  - name: Check Operator Status
+    kubernetes.core.k8s_info:
+      api_version: operators.coreos.com/v1alpha1
+      kind: ClusterServiceVersion
+      namespace: "{{ item }}"
+    register: csv_status
+    until: csv_status.resources | selectattr('metadata.name', 'search', item) | map(attribute='status.phase') | list | first == "Succeeded"
+    retries: 30
+    delay: 10
+    loop:
+    - group-sync-operator
+    - cert-manager-operator
+
+  - name: Create secrets
+    kubernetes.core.k8s:
+      state: present
+      template: 
+      - path: secrets/secrets.yaml
+      - path: configmaps/configmaps.yaml
+
+  - name: Create Private Key for Github Sync
     kubernetes.core.k8s:
       state: present
       definition:
@@ -116,7 +147,7 @@
             - '*.apps.{{ cluster_domain }}'
             - "downloads.{{ cluster_domain }}"
             - "console.{{ cluster_domain }}"
-            - "snovirt.{{ base_domain }}"
+            - "{{ vanity_url }}"
           isCA: false
           issuerRef:
             group: cert-manager.io
@@ -152,7 +183,7 @@
           componentRoutes:
           - name: console
             namespace: openshift-console
-            hostname: snovirt.dragonslair.dev
+            hostname: "{{ vanity_url }}"
             servingCertKeyPairSecret:
               name: "{{ cluster_domain_dash }}-tls"
 
@@ -170,7 +201,7 @@
             mappingMethod: claim
             type: GitHub
             github:
-              clientID: Ov23livnNuwJ0MgRcPO4
+              clientID: "{{github_oauth_id }}"
               clientSecret:
                 name: github-secret
               organizations:
