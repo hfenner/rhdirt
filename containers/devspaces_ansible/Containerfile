@@ -5,8 +5,15 @@ ARG PYV=3.11
 USER 0
 
 
-RUN dnf install --enablerepo=ansible-automation-platform-2.5-for-rhel-9-x86_64-rpms -y ansible-dev-tools+server && \
+RUN rpm --import https://downloads.1password.com/linux/keys/1password.asc && \
+    sh -c 'echo -e "[1password]\nname=1Password Stable Channel\nbaseurl=https://downloads.1password.com/linux/rpm/stable/\$basearch\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=\"https://downloads.1password.com/linux/keys/1password.asc\"" > /etc/yum.repos.d/1password.repo' && \
+    dnf check-update -y 1password-cli && \
+    dnf install --enablerepo=ansible-automation-platform-2.5-for-rhel-9-x86_64-rpms -y ansible-dev-tools+server podman 1password-cli && \
     dnf clean all && \
-    pip3 install awxkit 
+    pip3 install awxkit && \
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    sudo ./aws/install && \
+    rm awscliv2.zip
 
-USER 10001
+USER user
