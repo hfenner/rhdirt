@@ -1,0 +1,12 @@
+FROM quay.io/devfile/base-developer-image:ubi9-latest
+
+ARG PYV=3.11
+
+USER 0
+
+
+RUN dnf install --enablerepo=ansible-automation-platform-2.5-for-rhel-9-x86_64-rpms -y ansible-dev-tools+server && \
+    dnf clean all && \
+    pip3 install awxkit 
+
+USER 10001
