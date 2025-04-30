@@ -5,7 +5,7 @@ metadata:
 components:
   - name: product-demos-ee
     container:
-      image: 603512373452.dkr.ecr.us-east-1.amazonaws.com/udi-ansible:latest
+      image: image-registry.openshift-image-registry.svc:5000/hfenner-devspaces/udi-ansible:latest
       memoryRequest: 256M
       memoryLimit: 5Gi
       cpuRequest: 250m
@@ -23,18 +23,18 @@ components:
         - name: 'ANSIBLE_COLLECTIONS_PATH'
           value: '~/.ansible/collections:/usr/share/ansible/collections:/projects/ansible-devspaces-demo/collections'
 projects:
+  - name: rhdirt
+    git:
+      remotes:
+        origin: https://github.com/hfenner/rhdirt.git
+      checkoutFrom:
+        revision: main
+    clonePath: rhdirt
   - name: configsecret
     git:
       remotes:
         origin: https://github.com/hfenner/configsecret.git
     clonePath: configsecret
-  - name: rhdirt
-    git:
-      remotes:
-        origin: https://github.com/hfenner/echrhdirt.git
-      checkoutFrom:
-        revision: main
-    clonePath: rhdirt
   - name: product-demos
     git:
       remotes:
