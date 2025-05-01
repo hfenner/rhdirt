@@ -43,7 +43,7 @@ projects:
   - name: product-demos
     git:
       remotes:
-        origin: https://github.com/example/product-demos.git
+        origin: https://github.com/hfenner/product-demos.git
       checkoutFrom:
         revision: holden
     clonePath: product-demos
