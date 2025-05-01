@@ -11,6 +11,11 @@ components:
       cpuRequest: 250m
       cpuLimit: 2000m
       args: ['tail', '-f', '/dev/null']
+    attributes:
+      container-overrides:
+        spec:
+          securityContext:
+            runAsUser: 10001
   - name: tooling-container
     container:
       image: ghcr.io/ansible/ansible-devspaces@sha256:a28fa23d254ff1b3ae10b95a0812132148f141bda4516661e40d0c49c4ace200 # v24.10.2
