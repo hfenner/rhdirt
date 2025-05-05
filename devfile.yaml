@@ -2,11 +2,6 @@
 schemaVersion: 2.2.0
 metadata:
   name: product-demos
-attributes:
-  pod-overrides:
-    spec:
-      securityContext:
-        runAsUser: 10001
 components:
   - name: product-demos-ee
     container:
