@@ -3,3 +3,5 @@ all:
     windows: 
       vars: 
         ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_port: 5985
