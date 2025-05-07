@@ -1,0 +1,26 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: ansible-devspaces
+  namespace: hfenner-devspaces
+spec:
+  source:
+    git:
+      uri: https://github.com/hfenner/rhdirt.git
+    contextDir: /containers/devspaces_ansible
+  strategy:
+    type: Docker
+    dockerStrategy:
+      volumes:
+      - name: etc-pki-entitlement
+        mounts:
+        - destinationPath: /etc/pki/entitlement
+        source:
+          type: Secret
+          secret:
+            secretName: etc-pki-entitlement
+      dockerfilePath: Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: ansible-devspaces:latest
