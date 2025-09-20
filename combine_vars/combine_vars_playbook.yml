@@ -1,0 +1,42 @@
+---
+- hosts: localhost
+  gather_facts: false
+
+  vars:
+    aap_hostname: "{{ lookup('env', 'CONTROLLER_HOSTNAME') }}"
+    aap_token: "{{ lookup('env', 'CONTROLLER_OAUTH_TOKEN') }}"
+
+  tasks:
+  - name: Pull in file as a variable
+    ansible.builtin.include_vars: sample_controller_template.yml
+
+  - ansible.builtin.debug:
+      msg: "{{ test }}"
+
+  - ansible.builtin.debug:
+      msg: "{{ controller_templates }}"
+    vars:
+      controller_templates: "{{ test | combine(item) }}"
+    loop:
+    - name: Test1
+      playbook: Test1.yml
+    - name: Test2
+      playbook: Test2.yml
+
+  - ansible.builtin.set_fact:
+      combineme: "{{ test | combine(item) }}"
+    loop:
+    - name: Test1
+      playbook: vars.yml
+    - name: Test2
+      playbook: vars.yml
+    register: combinemeresult
+
+  - ansible.builtin.set_fact:
+      controller_templates: "{{ combinemeresult.results | map(attribute='ansible_facts.combineme') | ansible.builtin.flatten }}" 
+
+  - ansible.builtin.debug:
+      msg: "{{ controller_templates }}"
+
+  - ansible.builtin.include_role:
+      name: infra.aap_configuration.controller_job_templates
