@@ -1,7 +1,7 @@
 ---
 test:
   - name: "Vars Dump Test"
-    description: !unsafe ''
+    description: ''
     organization: "Default"
     project: "rhdirt"
     inventory: "Dragonslair AWS"
